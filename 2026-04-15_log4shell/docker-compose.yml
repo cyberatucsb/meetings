@@ -1,0 +1,10 @@
+services:
+  echo:
+    build: ./server
+    ports:
+      - "34598:34598"
+
+  stager:
+    build: ./stager
+    ports:
+      - "34249:34249"

