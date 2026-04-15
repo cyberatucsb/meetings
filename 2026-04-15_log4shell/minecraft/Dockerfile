@@ -1,4 +1,4 @@
-FROM itzg/minecraft-server:java17
+FROM itzg/minecraft-server:java25
 
 # Download vulnerable Log4j jars to swap in at runtime
 RUN mkdir -p /vulnerable-log4j && \
