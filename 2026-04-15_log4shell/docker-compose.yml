@@ -11,11 +11,11 @@ services:
       - "34390:34390"
 
   minecraft:
-    build: ./minecraft
+    image: itzg/minecraft-server:java17
     ports:
       - "25565:25565"
     environment:
       EULA: "TRUE"
-      VERSION: "26.1.2"
+      VERSION: "1.17.1"
       ONLINE_MODE: "FALSE"
-      JVM_OPTS: "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true"
+      JVM_OPTS: "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true -Dlog4j2.formatMsgNoLookups=false"
