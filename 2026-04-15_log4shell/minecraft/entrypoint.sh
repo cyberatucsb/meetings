@@ -1,18 +1,31 @@
 #!/bin/bash
-# Wait for the server to download and extract libraries on first run,
-# then swap Log4j jars before it actually launches.
-# We run the original entrypoint in the background, wait for libraries to appear,
-# swap them, then let it continue.
+# Swap Log4j jars inside the server jar, then start normally.
+# On first run the jar doesn't exist yet — the itzg image downloads it.
+# We let /start run once to download, then patch and restart.
 
-# Start a background watcher that swaps jars as soon as they appear
-(
-    LOG4J_DIR="/data/libraries/org/apache/logging/log4j"
-    echo "[entrypoint] waiting for Log4j libraries to appear..."
-    while [ ! -d "$LOG4J_DIR" ]; do
+SERVER_JAR="/data/minecraft_server.*.jar"
+
+if ls $SERVER_JAR >/dev/null 2>&1; then
+    # Server jar already exists (not first run) — swap and start
+    /swap-log4j.sh
+    exec /start
+else
+    # First run — start to download, wait for jar, then stop, swap, restart
+    /start &
+    PID=$!
+
+    while ! ls $SERVER_JAR >/dev/null 2>&1; do
         sleep 1
     done
-    /swap-log4j.sh
-) &
 
-# Hand off to the original entrypoint
-exec /start
+    # Wait for the server to finish starting so extraction is complete
+    until grep -q "Done" /data/logs/latest.log 2>/dev/null; do
+        sleep 1
+    done
+
+    kill $PID 2>/dev/null
+    wait $PID 2>/dev/null
+
+    /swap-log4j.sh
+    exec /start
+fi
