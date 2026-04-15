@@ -18,4 +18,5 @@ services:
       EULA: "TRUE"
       VERSION: "1.17.1"
       ONLINE_MODE: "FALSE"
+      SKIP_LOG4J_PATCHER: "true"
       JVM_OPTS: "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true -Dlog4j2.formatMsgNoLookups=false"
