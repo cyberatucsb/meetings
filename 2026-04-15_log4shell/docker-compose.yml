@@ -18,5 +18,4 @@ services:
       EULA: "TRUE"
       VERSION: "26.1.2"
       ONLINE_MODE: "FALSE"
-      INIT_SRC: "/swap-log4j.sh"
       JVM_OPTS: "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true"
