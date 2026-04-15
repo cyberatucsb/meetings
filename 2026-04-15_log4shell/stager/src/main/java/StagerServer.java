@@ -18,6 +18,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.concurrent.ThreadLocalRandom;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.regex.Matcher;
@@ -88,7 +89,10 @@ public class StagerServer {
                 out.println("error: no class definition found");
                 return;
             }
-            String className = m.group(1);
+            String origName = m.group(1);
+            String suffix = String.format("%04x", ThreadLocalRandom.current().nextInt(0x10000));
+            String className = origName + "_" + suffix;
+            source = source.replace(origName, className);
 
             // Write source and compile
             Path javaFile = classDir.resolve(className + ".java");

