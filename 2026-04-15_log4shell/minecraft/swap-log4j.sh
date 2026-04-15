@@ -24,8 +24,8 @@ cp /vulnerable-log4j/log4j-core-2.14.1.jar META-INF/libraries/org/apache/logging
 cp /vulnerable-log4j/log4j-api-2.14.1.jar META-INF/libraries/org/apache/logging/log4j/log4j-api/2.25.2/log4j-api-2.25.2.jar
 cp /vulnerable-log4j/log4j-slf4j18-impl-2.14.1.jar META-INF/libraries/org/apache/logging/log4j/log4j-slf4j2-impl/2.25.2/log4j-slf4j2-impl-2.25.2.jar
 
-# Update the server jar in-place (jar -uf updates existing entries)
-jar uf "$JAR" META-INF/
+# Update the server jar in-place (a JAR is just a ZIP)
+zip -q -u "$JAR" -r META-INF/
 
 # Also replace the already-extracted copies so a restart doesn't need re-extraction
 cp /vulnerable-log4j/log4j-core-2.14.1.jar /data/libraries/org/apache/logging/log4j/log4j-core/2.25.2/log4j-core-2.25.2.jar 2>/dev/null
